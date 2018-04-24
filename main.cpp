@@ -51,24 +51,27 @@ Thread *thread_led2;									/* Thread for LED2 */
 Thread *thread_buttons;								/* Thread for Button control */
 Thread *thread_com;										/* Thread for communication */
 
-float value_led1;
-float value_led2;
+float value;
 
 /********************************* Functions **********************************/
 void com_led_1(void)
 {
+	float local_value = value;
+	
 	while (1)
 	{
-		led_1.write(value_led1);
+		led_1.write(local_value);
 		Thread::wait(10);
 	}
 }
 
 void com_led_2(void)
 {
+	float local_value = value;
+	
 	while (1)
 	{
-		led_2.write(value_led2);
+		led_2.write(local_value);
 		Thread::wait(10);
 	}
 }
@@ -79,27 +82,33 @@ void com_buttons(void)
 	{
 		if (!button_1)
 		{
-			if (value_led1 <= 1.0)
+			if (value <= 1.0)
 			{
-				value_led1 = value_led1 + 0.01;
+				value = value + 0.01;
+				led_1.write(value);
+				led_2.write(value);
 			}
-			
-			if (value_led2 <= 1.0)
+			else
 			{
-				value_led2 = value_led2 + 0.01;
+				value = 1.0;
+				led_1.write(value);
+				led_2.write(value);
 			}
 		}
 		
 		if (!button_2)
 		{
-			if (value_led1 >= 0.0)
+			if (value >= 0.0)
 			{
-				value_led1 = value_led1 - 0.01;
+				value = value - 0.01;
+				led_1.write(value);
+				led_2.write(value);
 			}
-			
-			if (value_led2 >= 0.0)
+			else
 			{
-				value_led2 = value_led2 - 0.01;
+				value = 0.0;
+				led_1.write(value);
+				led_2.write(value);
 			}
 		}
 		
@@ -135,11 +144,12 @@ void com_communication(void)
 	*/
 	device.baud(9600);
 	
-	device.printf("Threaded UART PWM Task\n");
+	device.printf("Threaded UART GPIO Task\n");
 	device.printf("by Sebastian Dichler | <el16b032@technikum-wien.at>\n");
 	device.printf("Task 1 - Communication\n");
 	device.printf("Task 2 - Control of LED1\n");
-	device.printf("Task 3 - Control of LED2\n\n");
+	device.printf("Task 3 - Control of LED2\n");
+	device.printf("Task 4 - Button control of Tasks\n\n");
 	
 	while (1)
 	{
@@ -181,7 +191,7 @@ void com_communication(void)
 				device.putc(0x06);
 				
 #if DEBUG
-				device.printf("%s\n", receiver_buffer);
+				device.printf("#%s\n", receiver_buffer);
 #endif
 				
 				i = 0;
@@ -224,16 +234,20 @@ void com_communication(void)
 				/* LED1 Command */
 				if (strncmp(command_buffer, "LED1", BUF_SIZE*sizeof(char)) == 0)
 				{
-					value_led1 = strtof(data_buffer, &ptr) / 100;
+					value = strtof(data_buffer, &ptr) / 100;
 					
 #if DEBUG
-					device.printf("LED1 Value: %.2f%%\n", value_led1 * 100);
+					device.printf("LED1 Value: %.2f%%\n", value * 100);
 #endif
 					
-					if (thread_led1 == NULL)
+					if (thread_led1 != NULL)
 					{
-						thread_led1 = new Thread();
+						thread_led1->terminate();
+						delete thread_led1;
+						thread_led1 = NULL;
 					}
+					
+					thread_led1 = new Thread();
 					
 					status = thread_led1->start(com_led_1);
 					if (status != osOK)
@@ -245,16 +259,20 @@ void com_communication(void)
 				/* LED2 Command */
 				else if (strncmp(command_buffer, "LED2", BUF_SIZE*sizeof(char)) == 0)
 				{
-					value_led2 = strtof(data_buffer, &ptr) / 100;
+					value = strtof(data_buffer, &ptr) / 100;
 					
 #if DEBUG
-					device.printf("LED2 Value: %.2f%%\n", value_led2 * 100);
+					device.printf("LED2 Value: %.2f%%\n", value * 100);
 #endif
 					
-					if (thread_led2 == NULL)
+					if (thread_led2 != NULL)
 					{
-						thread_led2 = new Thread();
+						thread_led2->terminate();
+						delete thread_led2;
+						thread_led2 = NULL;
 					}
+					
+					thread_led2 = new Thread();
 					
 					status = thread_led2->start(com_led_2);
 					if (status != osOK)
@@ -317,25 +335,10 @@ int main(void)
 	}
 	
 /* ---- Start Buttons control ---- */
+	value = 0.0;
 	status = thread_buttons->start(com_buttons);
 	if (status != osOK)
 	{
 		error("ERROR: Thread 4: Failed!");
-	}
-	
-/* ---- Start LED1 ---- */
-	value_led1 = 0.0;
-	status = thread_led1->start(com_led_1);
-	if (status != osOK)
-	{
-		error("ERROR: Thread 2: Failed!");
-	}
-	
-/* ---- Start LED2 ---- */
-	value_led2 = 0.0;
-	status = thread_led2->start(com_led_2);
-	if (status != osOK)
-	{
-		error("ERROR: Thread 3: Failed!");
 	}
 }
